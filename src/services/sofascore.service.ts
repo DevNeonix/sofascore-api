@@ -1,5 +1,16 @@
 import axios from 'axios';
 import { fractionToDecimal } from '../utils/odds.utils.js';
+import type { 
+  FixturesResponse, 
+  LeaguesData, 
+  Lineups, 
+  Event, 
+  Odds, 
+  BulkOddsResponse,
+  Market,
+  Category,
+  UniqueTournament
+} from '../types/index.js';
 
 const SOFASCORE_API_URL = 'https://api.sofascore.com/api/v1';
 
@@ -10,7 +21,7 @@ export class SofascoreService {
     'Referer': 'https://www.sofascore.com/',
   };
 
-  private static transformOddsMarkets(markets: any[]) {
+  private static transformOddsMarkets(markets: any[]): Market[] {
     if (!markets) return [];
     return markets.map(market => ({
       ...market,
@@ -21,7 +32,7 @@ export class SofascoreService {
     }));
   }
 
-  static async getFixtures(sport: string, date: string, country?: string) {
+  static async getFixtures(sport: string, date: string, country?: string): Promise<FixturesResponse> {
     const sportMap: { [key: string]: string } = {
       'football': 'football',
       'basket': 'basketball',
@@ -33,12 +44,12 @@ export class SofascoreService {
       console.log(`[SERVICE] Fetching country-specific fixtures for sport: ${sport}, date: ${date}, country config: ${country}`);
       try {
         // 1. Get unique tournaments for the country
-        const leaguesData = await this.getLeagues(country, ssSport);
+        const leaguesData: LeaguesData = await this.getLeagues(country, ssSport);
         const uniqueTournaments = leaguesData.uniqueTournaments || [];
 
         console.log(`[SERVICE] Found ${uniqueTournaments.length} unique tournaments in ${country}. Fetching events...`);
 
-        const promises = uniqueTournaments.map(async (tournament: any) => {
+        const promises = uniqueTournaments.map(async (tournament: UniqueTournament) => {
           try {
             const response = await axios.get(`${SOFASCORE_API_URL}/unique-tournament/${tournament.id}/scheduled-events/${date}`, {
               headers: this.headers
@@ -52,7 +63,7 @@ export class SofascoreService {
         });
 
         const resultsArray = await Promise.all(promises);
-        const allEvents: any[] = [];
+        const allEvents: Event[] = [];
         resultsArray.forEach(events => allEvents.push(...events));
         return { events: allEvents };
       } catch (error: any) {
@@ -68,16 +79,16 @@ export class SofascoreService {
       const categoriesResponse = await axios.get(`${SOFASCORE_API_URL}/sport/${ssSport}/categories`, {
         headers: this.headers
       });
-      const categories = categoriesResponse.data.categories || [];
+      const categories: Category[] = categoriesResponse.data.categories || [];
       console.log(`[SERVICE] Found ${categories.length} categories globally. Fetching events per category...`);
 
-      const allEvents: any[] = [];
+      const allEvents: Event[] = [];
       const chunkSize = 20; // Chunk size to avoid being blocked
       for (let i = 0; i < categories.length; i += chunkSize) {
         const chunk = categories.slice(i, i + chunkSize);
         console.log(`[SERVICE] Fetching global fixtures: ${Math.min(i + chunkSize, categories.length)}/${categories.length} categories processed...`);
         
-        const chunkPromises = chunk.map(async (category: any) => {
+        const chunkPromises = chunk.map(async (category: Category) => {
           try {
             const response = await axios.get(`${SOFASCORE_API_URL}/category/${category.id}/scheduled-events/${date}`, {
               headers: this.headers
@@ -95,8 +106,8 @@ export class SofascoreService {
       }
 
       // Remove potential duplicates
-      const uniqueEventsMap = new Map();
-      allEvents.forEach((ev: any) => {
+      const uniqueEventsMap = new Map<number, Event>();
+      allEvents.forEach((ev: Event) => {
         if (!uniqueEventsMap.has(ev.id)) {
           uniqueEventsMap.set(ev.id, ev);
         }
@@ -111,7 +122,7 @@ export class SofascoreService {
     }
   }
 
-  static async getLeagues(country: string, sport: string) {
+  static async getLeagues(country: string, sport: string): Promise<LeaguesData> {
     console.log(`[SERVICE] Fetching leagues for country: ${country}, sport: ${sport}`);
     try {
       const sportMap: { [key: string]: string } = {
@@ -141,9 +152,9 @@ export class SofascoreService {
     return { ...player, ...rest };
   }
 
-  private static transformLineups(lineups: any) {
+  private static transformLineups(lineups: any): Lineups {
     if (!lineups) return lineups;
-    const sides = ['home', 'away'];
+    const sides: (keyof Lineups)[] = ['home', 'away'];
     const transformed = { ...lineups };
 
     sides.forEach(side => {
@@ -179,10 +190,10 @@ export class SofascoreService {
       }
     });
 
-    return transformed;
+    return transformed as Lineups;
   }
 
-  static async getLineups(eventId: string) {
+  static async getLineups(eventId: string): Promise<Lineups> {
     console.log(`[SERVICE] Fetching lineups for eventId: ${eventId}`);
     try {
       const response = await axios.get(`${SOFASCORE_API_URL}/event/${eventId}/lineups`, {
@@ -196,7 +207,7 @@ export class SofascoreService {
     }
   }
 
-  static async getEvent(eventId: string) {
+  static async getEvent(eventId: string): Promise<Event | null> {
     console.log(`[SERVICE] Fetching general info for eventId: ${eventId}`);
     try {
       const response = await axios.get(`${SOFASCORE_API_URL}/event/${eventId}`, {
@@ -210,7 +221,7 @@ export class SofascoreService {
     }
   }
 
-  static async getOdds(eventId: string) {
+  static async getOdds(eventId: string): Promise<Odds> {
     console.log(`[SERVICE] Fetching odds for eventId: ${eventId}`);
     try {
       const response = await axios.get(`${SOFASCORE_API_URL}/event/${eventId}/odds/1/all`, {
@@ -230,7 +241,7 @@ export class SofascoreService {
     }
   }
 
-  static async getBulkOdds(sport: string, date: string) {
+  static async getBulkOdds(sport: string, date: string): Promise<BulkOddsResponse> {
     console.log(`[SERVICE] Fetching bulk odds for sport: ${sport}, date: ${date}`);
     try {
       const sportMap: { [key: string]: string } = {
@@ -246,7 +257,7 @@ export class SofascoreService {
 
       // Transform bulk odds object
       const allOdds = response.data.odds || {};
-      const transformedBulkOdds: any = {};
+      const transformedBulkOdds: { [key: string]: Market } = {};
 
       for (const eventId in allOdds) {
         const market = allOdds[eventId];
@@ -269,4 +280,5 @@ export class SofascoreService {
     }
   }
 }
+
 
