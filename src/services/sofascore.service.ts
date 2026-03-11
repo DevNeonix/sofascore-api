@@ -9,7 +9,9 @@ import type {
   BulkOddsResponse,
   Market,
   Category,
-  UniqueTournament
+  UniqueTournament,
+  SofascorePlayerResponse,
+  Player
 } from '../types/index.js';
 
 const SOFASCORE_API_URL = 'https://api.sofascore.com/api/v1';
@@ -146,10 +148,10 @@ export class SofascoreService {
     }
   }
 
-  private static flattenPlayer(playerObj: any) {
-    if (!playerObj || !playerObj.player) return playerObj;
+  private static flattenPlayer(playerObj: SofascorePlayerResponse | (Player & { player?: never })): Player {
+    if (!playerObj || !('player' in playerObj)) return playerObj as Player;
     const { player, ...rest } = playerObj;
-    return { ...player, ...rest };
+    return { ...player, ...rest } as Player;
   }
 
   private static transformLineups(lineups: any): Lineups {

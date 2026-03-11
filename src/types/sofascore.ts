@@ -84,13 +84,33 @@ export interface Odds {
   [key: string]: any;
 }
 
-export interface Player {
+export interface PlayerDetails {
   id: number;
   name: string;
   slug: string;
   shortName: string;
   position: string;
   jerseyNumber: string;
+  userCount?: number;
+  marketValueCurrency?: string;
+  dateOfBirthTimestamp?: number;
+  fieldTranslations?: any;
+}
+
+export interface Player extends PlayerDetails {
+  starter?: boolean;
+  substitute?: boolean;
+  statistics?: any;
+  [key: string]: any;
+}
+
+export interface SofascorePlayerResponse {
+  player: PlayerDetails;
+  position: string;
+  jerseyNumber: string;
+  starter?: boolean;
+  substitute?: boolean;
+  statistics?: any;
   [key: string]: any;
 }
 
@@ -99,6 +119,7 @@ export interface LineupSide {
   substitutes: Player[];
   missingPlayers: Player[];
   formation?: string;
+  captain?: Player;
 }
 
 export interface Lineups {
@@ -120,6 +141,11 @@ export interface FullEventData {
   event: Event | null;
   odds: Odds;
   lineups: Lineups | null;
+}
+
+export interface PartialEventDetails {
+  lineups: Lineups | null;
+  odds: Odds;
 }
 
 export interface BulkOddsResponse {

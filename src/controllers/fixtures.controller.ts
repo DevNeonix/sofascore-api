@@ -1,5 +1,15 @@
 import type { Request, Response } from 'express';
 import { SofascoreService } from '../services/sofascore.service.js';
+import type { 
+  Event, 
+  FixturesResponse, 
+  BulkOddsResponse, 
+  Lineups, 
+  Odds, 
+  LeaguesData, 
+  FullEventData,
+  PartialEventDetails
+} from '../types/index.js';
 
 export class FixturesController {
   static async getFixtures(req: Request, res: Response) {
@@ -18,25 +28,25 @@ export class FixturesController {
 
     try {
       // Fetch fixtures and bulk odds in parallel on the backend
-      const [fixturesData, oddsData] = await Promise.all([
+      const [fixturesData, oddsData]: [FixturesResponse, BulkOddsResponse] = await Promise.all([
         SofascoreService.getFixtures(sport, dateStr, country),
         SofascoreService.getBulkOdds(sport, dateStr)
       ]);
 
-      let events = fixturesData.events || [];
+      let events: Event[] = fixturesData.events || [];
       
       // Filter events to only include those happening on the specified date in the America/Lima timezone
       const startOfDay = new Date(`${dateStr}T00:00:00-05:00`).getTime() / 1000;
       const endOfDay = new Date(`${dateStr}T23:59:59.999-05:00`).getTime() / 1000;
 
-      events = events.filter((event: any) => {
+      events = events.filter((event: Event) => {
         return event.startTimestamp >= startOfDay && event.startTimestamp <= endOfDay;
       });
 
       const allOdds = oddsData.odds || {};
 
       // Enrich events with their corresponding odds
-      const enrichedEvents = events.map((event: any) => ({
+      const enrichedEvents = events.map((event: Event) => ({
         ...event,
         odds: allOdds[event.id] || null
       }));
@@ -54,7 +64,7 @@ export class FixturesController {
     console.log(`[CONTROLLER] Received request for lineups: eventId ${eventId}`);
 
     try {
-      const lineups = await SofascoreService.getLineups(eventId);
+      const lineups: Lineups = await SofascoreService.getLineups(eventId);
       console.log(`[CONTROLLER] Successfully returning lineups for eventId ${eventId}`);
       res.json(lineups);
     } catch (error: any) {
@@ -68,7 +78,7 @@ export class FixturesController {
     console.log(`[CONTROLLER] Received request for odds: eventId ${eventId}`);
 
     try {
-      const odds = await SofascoreService.getOdds(eventId);
+      const odds: Odds = await SofascoreService.getOdds(eventId);
       console.log(`[CONTROLLER] Successfully returning odds for eventId ${eventId}`);
       res.json(odds);
     } catch (error: any) {
@@ -83,13 +93,14 @@ export class FixturesController {
 
     try {
       // Fetch everything in parallel on the backend
-      const [lineups, odds] = await Promise.all([
+      const [lineups, odds]: [Lineups, Odds] = await Promise.all([
         SofascoreService.getLineups(eventId),
         SofascoreService.getOdds(eventId)
       ]);
 
       console.log(`[CONTROLLER] Successfully returning unified details for eventId ${eventId}`);
-      res.json({ lineups, odds });
+      const response: PartialEventDetails = { lineups, odds };
+      res.json(response);
     } catch (error: any) {
       console.error(`[CONTROLLER] Error fetching event details: ${error.message}`);
       res.status(500).json({ error: error.message });
@@ -105,15 +116,16 @@ export class FixturesController {
       const [generalInfo, odds, lineups] = await Promise.all([
         SofascoreService.getEvent(eventId),
         SofascoreService.getOdds(eventId),
-        SofascoreService.getLineups(eventId).catch(() => ({ error: 'Lineups not available' }))
+        SofascoreService.getLineups(eventId).catch(() => null)
       ]);
 
       console.log(`[CONTROLLER] Successfully returning full data package for eventId ${eventId}`);
-      res.json({
+      const response: FullEventData = {
         event: generalInfo,
         odds: odds,
         lineups: lineups
-      });
+      };
+      res.json(response);
     } catch (error: any) {
       console.error(`[CONTROLLER] Error fetching full event data: ${error.message}`);
       res.status(500).json({ error: error.message });
@@ -126,7 +138,7 @@ export class FixturesController {
     console.log(`[CONTROLLER] Received request for bulk odds: ${sport} - ${date}`);
 
     try {
-      const odds = await SofascoreService.getBulkOdds(sport, date);
+      const odds: BulkOddsResponse = await SofascoreService.getBulkOdds(sport, date);
       res.json(odds);
     } catch (error: any) {
       console.error(`[CONTROLLER] Error: ${error.message}`);
@@ -140,7 +152,7 @@ export class FixturesController {
     console.log(`[CONTROLLER] Received request for leagues: ${country} - ${sport}`);
 
     try {
-      const leagues = await SofascoreService.getLeagues(country, sport);
+      const leagues: LeaguesData = await SofascoreService.getLeagues(country, sport);
       res.json(leagues);
     } catch (error: any) {
       console.error(`[CONTROLLER] Error: ${error.message}`);
@@ -148,3 +160,4 @@ export class FixturesController {
     }
   }
 }
+
