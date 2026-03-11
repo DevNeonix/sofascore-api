@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SofaScore Full Data API</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f4f9; margin: 0; padding: 20px; color: #333; }
+        .container { max-width: 1000px; margin: 0 auto; background: #fff; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #004666; margin-bottom: 25px; }
+        .tabs { display: flex; justify-content: center; margin-bottom: 25px; border-bottom: 2px solid #eee; }
+        .tab { padding: 12px 25px; cursor: pointer; border: none; background: none; font-size: 16px; font-weight: 600; color: #666; transition: all 0.3s; position: relative; }
+        .tab.active { color: #004666; }
+        .tab.active::after { content: ''; position: absolute; bottom: -2px; left: 0; width: 100%; height: 3px; background: #004666; }
+        .tab:hover { color: #004666; }
+        .controls { display: flex; justify-content: center; align-items: center; gap: 15px; margin-bottom: 25px; }
+        input[type="date"] { padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; outline: none; }
+        #fixtures-list { display: grid; gap: 12px; }
+        .fixture { background: #fff; border: 1px solid #eee; padding: 15px; border-radius: 10px; display: flex; align-items: center; justify-content: space-between; transition: transform 0.2s; }
+        .fixture:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        .team { display: flex; align-items: center; gap: 10px; width: 35%; }
+        .team.home { justify-content: flex-end; }
+        .team img { width: 25px; height: 25px; object-fit: contain; }
+        .score { font-weight: bold; font-size: 18px; color: #004666; min-width: 50px; text-align: center; }
+        .time { color: #888; font-size: 13px; text-align: center; }
+        .no-data { text-align: center; color: #888; padding: 40px; }
+        .loading { text-align: center; padding: 40px; font-style: italic; color: #004666; }
+        .status { font-size: 11px; text-transform: uppercase; font-weight: bold; padding: 3px 8px; border-radius: 4px; background: #eee; margin-top: 5px; }
+        .status.live { background: #e74c3c; color: #fff; }
+        
+        .odds-row { display: flex; gap: 6px; margin-top: 8px; justify-content: center; }
+        .odd-item { background: #eef7fb; border: 1px solid #d1e9f5; padding: 2px 6px; border-radius: 4px; display: flex; align-items: center; gap: 4px; min-width: 35px; }
+        .odd-label { color: #666; font-size: 9px; }
+        .odd-value { font-weight: bold; color: #004666; font-size: 10px; }
+        
+        /* Modal Styles */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); overflow-y: auto; }
+        .modal-content { background-color: #fff; margin: 2% auto; padding: 25px; border-radius: 12px; max-width: 900px; position: relative; }
+        .close { position: absolute; right: 20px; top: 15px; font-size: 28px; font-weight: bold; cursor: pointer; color: #888; }
+        .lineups-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 20px; }
+        .lineup-section { margin-bottom: 20px; }
+        .section-title { font-size: 14px; font-weight: bold; color: #004666; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 10px; text-transform: uppercase; }
+        .player-row { padding: 4px 0; border-bottom: 1px dotted #eee; display: flex; justify-content: space-between; align-items: center; }
+        .player-info { display: flex; align-items: center; gap: 8px; }
+        .player-name { font-size: 13px; }
+        .player-pos { font-size: 10px; color: #999; text-transform: uppercase; width: 25px; }
+        .player-number { font-size: 11px; background: #f0f0f0; padding: 1px 5px; border-radius: 3px; color: #666; min-width: 15px; text-align: center; }
+        .missing-reason { font-size: 10px; color: #e74c3c; font-style: italic; }
+        .formation { font-weight: bold; margin-bottom: 15px; color: #004666; text-align: center; font-size: 16px; background: #f9f9f9; padding: 5px; border-radius: 6px; }
+        .lineup-title { text-align: center; color: #004666; margin-bottom: 5px; }
+        .event-info-header { text-align: center; background: #f0f7ff; padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #d0e3ff; }
+        .tournament-name { font-size: 14px; color: #555; margin-bottom: 5px; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SofaScore Fixtures & Odds</h1>
+        
+        <div class="tabs">
+            <button class="tab active" data-sport="football">Football</button>
+            <button class="tab" data-sport="basket">Basketball</button>
+            <button class="tab" data-sport="tenis">Tennis</button>
+        </div>
+
+        <div class="controls">
+            <label for="date-input">Select Date:</label>
+            <input type="date" id="date-input">
+        </div>
+
+        <div id="fixtures-list">
+            <!-- Fixtures will be loaded here -->
+        </div>
+    </div>
+
+    <!-- Details Modal -->
+    <div id="lineups-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div id="lineups-content">
+                <!-- Content will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentSport = 'football';
+        const fullDataCache = {}; 
+        
+        const dateInput = document.getElementById('date-input');
+        const fixturesList = document.getElementById('fixtures-list');
+        const tabs = document.querySelectorAll('.tab');
+        const modal = document.getElementById('lineups-modal');
+        const modalContent = document.getElementById('lineups-content');
+        const closeBtn = document.getElementsByClassName('close')[0];
+
+        const today = new Date().toISOString().split('T')[0];
+        dateInput.value = today;
+
+        async function fetchFixtures() {
+            const date = dateInput.value;
+            if (!date) return;
+            fixturesList.innerHTML = '<div class="loading">Loading fixtures...</div>';
+            try {
+                const response = await fetch(`/api/${currentSport}/fixtures/${date}`);
+                const data = await response.json();
+                if (!data.events || data.events.length === 0) {
+                    fixturesList.innerHTML = '<div class="no-data">No fixtures found for this date.</div>';
+                    return;
+                }
+                renderFixtures(data.events);
+            } catch (error) {
+                console.error('Error:', error);
+                fixturesList.innerHTML = '<div class="no-data">Error loading fixtures.</div>';
+            }
+        }
+
+        function renderFixtures(events) {
+            fixturesList.innerHTML = '';
+            events.forEach(event => {
+                const fixture = document.createElement('div');
+                fixture.className = 'fixture';
+                fixture.style.cursor = 'pointer';
+                fixture.onclick = () => showFullDetails(event.id);
+
+                const startTime = new Date(event.startTimestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const isLive = event.status.type === 'inprogress';
+                const statusClass = isLive ? 'status live' : 'status';
+
+                let oddsHtml = '';
+                if (event.odds && event.odds.choices) {
+                    oddsHtml = '<div class="odds-row">';
+                    event.odds.choices.forEach(choice => {
+                        const val = choice.decimalValue;
+                        oddsHtml += `
+                            <div class="odd-item">
+                                <span class="odd-label">${choice.name}</span>
+                                <span class="odd-value">${val ? val.toFixed(2) : 'N/A'}</span>
+                            </div>
+                        `;
+                    });
+                    oddsHtml += '</div>';
+                }
+
+                fixture.innerHTML = `
+                    <div class="team home">
+                        <span>${event.homeTeam.name}</span>
+                        <img src="https://api.sofascore.app/api/v1/team/${event.homeTeam.id}/image" onerror="this.src='https://www.sofascore.com/static/images/team-placeholder.png'">
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center; min-width: 140px;">
+                        <div class="time">${startTime}</div>
+                        <div class="score">
+                            ${event.homeScore.current ?? '-'} - ${event.awayScore.current ?? '-'}
+                        </div>
+                        <div class="${statusClass}">${event.status.description}</div>
+                        ${oddsHtml}
+                    </div>
+                    <div class="team away">
+                        <img src="https://api.sofascore.app/api/v1/team/${event.awayTeam.id}/image" onerror="this.src='https://www.sofascore.com/static/images/team-placeholder.png'">
+                        <span>${event.awayTeam.name}</span>
+                    </div>
+                `;
+                fixturesList.appendChild(fixture);
+            });
+        }
+
+        async function showFullDetails(eventId) {
+            modal.style.display = "block";
+            if (fullDataCache[eventId]) {
+                renderFullDetails(fullDataCache[eventId]);
+                return;
+            }
+            modalContent.innerHTML = '<div class="loading">Fetching full match data...</div>';
+            try {
+                const response = await fetch(`/api/${currentSport}/${eventId}/full-data`);
+                const data = await response.json();
+                fullDataCache[eventId] = data;
+                renderFullDetails(data);
+            } catch (error) {
+                console.error(error);
+                modalContent.innerHTML = '<p class="no-data">Error loading match details.</p>';
+            }
+        }
+
+        function renderFullDetails(data) {
+            const ev = data.event || {};
+            const lineupsData = data.lineups || {};
+            const oddsData = data.odds || {};
+
+            let html = `
+                <div class="event-info-header">
+                    <div class="tournament-name">${ev.tournament?.name || 'Tournament'}</div>
+                    <h2 class="lineup-title">${ev.homeTeam?.name} ${ev.homeScore?.current ?? ''} - ${ev.awayScore?.current ?? ''} ${ev.awayTeam?.name}</h2>
+                    <div style="font-size: 12px; color: #666;">Status: ${ev.status?.description} | Venue: ${ev.venue?.name || 'N/A'}</div>
+                </div>
+            `;
+            
+            if (oddsData.markets && oddsData.markets.length > 0) {
+                html += '<div style="margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 15px;">';
+                html += '<div class="section-title" style="text-align: center;">All Betting Markets</div>';
+                oddsData.markets.forEach(market => {
+                    html += `
+                        <div style="margin-top: 12px;">
+                            <div style="font-size: 11px; font-weight: bold; color: #888; text-align: center; margin-bottom: 5px;">${market.marketName}</div>
+                            <div class="odds-row" style="flex-wrap: wrap;">
+                                ${market.choices.map(c => `
+                                    <div class="odd-item">
+                                        <span class="odd-label">${c.name}</span>
+                                        <span class="odd-value">${c.decimalValue ? c.decimalValue.toFixed(2) : 'N/A'}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            }
+
+            if (lineupsData.error || !lineupsData.home || !lineupsData.away) {
+                html += `<p class="no-data">Lineups not available for this event.</p>`;
+            } else {
+                html += '<div class="lineups-grid">';
+                ['home', 'away'].forEach(side => {
+                    const team = lineupsData[side];
+                    html += `<div class="team-column">
+                        <div class="formation">${team.formation || 'N/A'}</div>
+                        <div class="lineup-section">
+                            <div class="section-title">Starting Lineup</div>
+                            ${(team.players || []).map(p => `
+                                <div class="player-row">
+                                    <div class="player-info">
+                                        <span class="player-pos">${p.position || ''}</span>
+                                        <span class="player-name">${p.name || 'Unknown'}</span>
+                                    </div>
+                                    <span class="player-number">${p.shirtNumber || ''}</span>
+                                </div>
+                            `).join('') || '<div class="no-data">Not available</div>'}
+                        </div>
+                        <div class="lineup-section">
+                            <div class="section-title">Substitutes</div>
+                            ${(team.substitutes || []).map(p => `
+                                <div class="player-row">
+                                    <div class="player-info">
+                                        <span class="player-pos">${p.position || ''}</span>
+                                        <span class="player-name">${p.name || 'Unknown'}</span>
+                                    </div>
+                                    <span class="player-number">${p.shirtNumber || ''}</span>
+                                </div>
+                            `).join('') || '<div class="no-data">None</div>'}
+                        </div>
+                        ${team.missingPlayers && team.missingPlayers.length > 0 ? `
+                            <div class="lineup-section">
+                                <div class="section-title">Missing</div>
+                                ${team.missingPlayers.map(p => `
+                                    <div class="player-row">
+                                        <span class="player-name">${p.name || 'Unknown'}</span>
+                                        <span class="missing-reason">${p.reason === 1 ? 'Injured' : (p.reason === 2 ? 'Suspended' : '')}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : ''}
+                    </div>`;
+                });
+                html += '</div>';
+            }
+            modalContent.innerHTML = html;
+        }
+
+        closeBtn.onclick = () => modal.style.display = "none";
+        window.onclick = (event) => { if (event.target == modal) modal.style.display = "none"; }
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentSport = tab.dataset.sport;
+                fetchFixtures();
+            });
+        });
+        dateInput.addEventListener('change', fetchFixtures);
+        fetchFixtures();
+    </script>
+</body>
+</html>
