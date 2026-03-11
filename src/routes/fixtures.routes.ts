@@ -28,4 +28,8 @@ router.get('/:sport/odds/:date', (req, res) => {
   FixturesController.getBulkOdds(req, res);
 });
 
+router.get('/leagues/:country/:sport', (req, res) => {
+  FixturesController.getLeagues(req, res);
+});
+
 export default router;

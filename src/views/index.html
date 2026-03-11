@@ -63,8 +63,16 @@
         </div>
 
         <div class="controls">
-            <label for="date-input">Select Date:</label>
-            <input type="date" id="date-input">
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+                <label for="date-input">Select Date:</label>
+                <input type="date" id="date-input">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 5px; min-width: 200px;">
+                <label for="league-filter">Filter by League:</label>
+                <select id="league-filter">
+                    <option value="all">All Leagues</option>
+                </select>
+            </div>
         </div>
 
         <div id="fixtures-list">
@@ -84,9 +92,11 @@
 
     <script>
         let currentSport = 'football';
+        let allEvents = [];
         const fullDataCache = {}; 
         
         const dateInput = document.getElementById('date-input');
+        const leagueFilter = document.getElementById('league-filter');
         const fixturesList = document.getElementById('fixtures-list');
         const tabs = document.querySelectorAll('.tab');
         const modal = document.getElementById('lineups-modal');
@@ -104,27 +114,78 @@
                 const response = await fetch(`/api/${currentSport}/fixtures/${date}`);
                 const data = await response.json();
                 if (!data.events || data.events.length === 0) {
+                    allEvents = [];
                     fixturesList.innerHTML = '<div class="no-data">No fixtures found for this date.</div>';
+                    updateLeagueFilter([]);
                     return;
                 }
-                renderFixtures(data.events);
+                allEvents = data.events;
+                updateLeagueFilter(allEvents);
+                renderFixtures(allEvents);
             } catch (error) {
                 console.error('Error:', error);
                 fixturesList.innerHTML = '<div class="no-data">Error loading fixtures.</div>';
             }
         }
 
+        function updateLeagueFilter(events) {
+            const leagues = new Map();
+            events.forEach(e => {
+                if (e.tournament && e.tournament.uniqueTournament) {
+                    leagues.set(e.tournament.uniqueTournament.id, e.tournament.uniqueTournament.name);
+                } else if (e.tournament) {
+                    leagues.set(e.tournament.id, e.tournament.name);
+                }
+            });
+
+            const sortedLeagues = Array.from(leagues.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+            
+            const currentSelected = leagueFilter.value;
+            leagueFilter.innerHTML = '<option value="all">All Leagues</option>';
+            sortedLeagues.forEach(([id, name]) => {
+                const option = document.createElement('option');
+                option.value = id;
+                option.textContent = name;
+                leagueFilter.appendChild(option);
+            });
+            
+            // Try to restore selection if it still exists
+            if (leagues.has(Number(currentSelected))) {
+                leagueFilter.value = currentSelected;
+            } else {
+                leagueFilter.value = 'all';
+            }
+        }
+
         function renderFixtures(events) {
+            const selectedLeague = leagueFilter.value;
+            const filteredEvents = selectedLeague === 'all' 
+                ? events 
+                : events.filter(e => {
+                    const tId = e.tournament.uniqueTournament?.id || e.tournament.id;
+                    return String(tId) === selectedLeague;
+                });
+
             fixturesList.innerHTML = '';
-            events.forEach(event => {
+            
+            if (filteredEvents.length === 0) {
+                fixturesList.innerHTML = '<div class="no-data">No matches for this league.</div>';
+                return;
+            }
+
+            filteredEvents.forEach(event => {
                 const fixture = document.createElement('div');
                 fixture.className = 'fixture';
                 fixture.style.cursor = 'pointer';
+                fixture.style.flexDirection = 'column';
+                fixture.style.alignItems = 'stretch';
+                fixture.style.gap = '10px';
                 fixture.onclick = () => showFullDetails(event.id);
 
                 const startTime = new Date(event.startTimestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 const isLive = event.status.type === 'inprogress';
                 const statusClass = isLive ? 'status live' : 'status';
+                const leagueName = event.tournament.uniqueTournament?.name || event.tournament.name;
 
                 let oddsHtml = '';
                 if (event.odds && event.odds.choices) {
@@ -142,22 +203,28 @@
                 }
 
                 fixture.innerHTML = `
-                    <div class="team home">
-                        <span>${event.homeTeam.name}</span>
-                        <img src="https://api.sofascore.app/api/v1/team/${event.homeTeam.id}/image" onerror="this.src='https://www.sofascore.com/static/images/team-placeholder.png'">
+                    <div style="font-size: 11px; font-weight: bold; color: #004666; border-bottom: 1px solid #f0f0f0; padding-bottom: 5px; margin-bottom: 5px; display: flex; justify-content: space-between;">
+                        <span>${leagueName}</span>
+                        <span style="color: #999;">ID: ${event.id}</span>
                     </div>
-                    <div style="display: flex; flex-direction: column; align-items: center; min-width: 140px;">
-                        <div class="time">${startTime}</div>
-                        <div class="score">
-                            ${event.homeScore.current ?? '-'} - ${event.awayScore.current ?? '-'}
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <div class="team home">
+                            <span>${event.homeTeam.name}</span>
+                            <img src="https://api.sofascore.app/api/v1/team/${event.homeTeam.id}/image" onerror="this.src='https://www.sofascore.com/static/images/team-placeholder.png'">
                         </div>
-                        <div class="${statusClass}">${event.status.description}</div>
-                        ${oddsHtml}
+                        <div style="display: flex; flex-direction: column; align-items: center; min-width: 120px;">
+                            <div class="time">${startTime}</div>
+                            <div class="score">
+                                ${event.homeScore.current ?? '-'} - ${event.awayScore.current ?? '-'}
+                            </div>
+                            <div class="${statusClass}">${event.status.description}</div>
+                        </div>
+                        <div class="team away">
+                            <img src="https://api.sofascore.app/api/v1/team/${event.awayTeam.id}/image" onerror="this.src='https://www.sofascore.com/static/images/team-placeholder.png'">
+                            <span>${event.awayTeam.name}</span>
+                        </div>
                     </div>
-                    <div class="team away">
-                        <img src="https://api.sofascore.app/api/v1/team/${event.awayTeam.id}/image" onerror="this.src='https://www.sofascore.com/static/images/team-placeholder.png'">
-                        <span>${event.awayTeam.name}</span>
-                    </div>
+                    ${oddsHtml}
                 `;
                 fixturesList.appendChild(fixture);
             });
@@ -221,31 +288,39 @@
                 html += '<div class="lineups-grid">';
                 ['home', 'away'].forEach(side => {
                     const team = lineupsData[side];
+                    const formationHtml = team.formation ? `<div class="formation">${team.formation}</div>` : '';
+                    
                     html += `<div class="team-column">
-                        <div class="formation">${team.formation || 'N/A'}</div>
+                        ${formationHtml}
                         <div class="lineup-section">
                             <div class="section-title">Starting Lineup</div>
-                            ${(team.players || []).map(p => `
-                                <div class="player-row">
-                                    <div class="player-info">
-                                        <span class="player-pos">${p.position || ''}</span>
-                                        <span class="player-name">${p.name || 'Unknown'}</span>
+                            ${(team.players || []).map(p => {
+                                const num = p.shirtNumber || p.jerseyNumber || '';
+                                return `
+                                    <div class="player-row">
+                                        <div class="player-info">
+                                            <span class="player-pos">${p.position || ''}</span>
+                                            <span class="player-name">${p.name || 'Unknown'}</span>
+                                        </div>
+                                        <span class="player-number">${num}</span>
                                     </div>
-                                    <span class="player-number">${p.shirtNumber || ''}</span>
-                                </div>
-                            `).join('') || '<div class="no-data">Not available</div>'}
+                                `;
+                            }).join('') || '<div class="no-data">Not available</div>'}
                         </div>
                         <div class="lineup-section">
                             <div class="section-title">Substitutes</div>
-                            ${(team.substitutes || []).map(p => `
-                                <div class="player-row">
-                                    <div class="player-info">
-                                        <span class="player-pos">${p.position || ''}</span>
-                                        <span class="player-name">${p.name || 'Unknown'}</span>
+                            ${(team.substitutes || []).map(p => {
+                                const num = p.shirtNumber || p.jerseyNumber || '';
+                                return `
+                                    <div class="player-row">
+                                        <div class="player-info">
+                                            <span class="player-pos">${p.position || ''}</span>
+                                            <span class="player-name">${p.name || 'Unknown'}</span>
+                                        </div>
+                                        <span class="player-number">${num}</span>
                                     </div>
-                                    <span class="player-number">${p.shirtNumber || ''}</span>
-                                </div>
-                            `).join('') || '<div class="no-data">None</div>'}
+                                `;
+                            }).join('') || '<div class="no-data">None</div>'}
                         </div>
                         ${team.missingPlayers && team.missingPlayers.length > 0 ? `
                             <div class="lineup-section">
@@ -276,6 +351,7 @@
             });
         });
         dateInput.addEventListener('change', fetchFixtures);
+        leagueFilter.addEventListener('change', () => renderFixtures(allEvents));
         fetchFixtures();
     </script>
 </body>

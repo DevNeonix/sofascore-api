@@ -4,8 +4,8 @@ export function fractionToDecimal(fraction: string | undefined, decimalValue?: n
   
   const parts = fraction.split('/');
   if (parts.length === 2) {
-    const num = parseFloat(parts[0]);
-    const den = parseFloat(parts[1]);
+    const num = parseFloat(parts[0] || '0');
+    const den = parseFloat(parts[1] || '0');
     if (isNaN(num) || isNaN(den) || den === 0) return null;
     return (num / den) + 1;
   }
