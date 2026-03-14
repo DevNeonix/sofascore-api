@@ -74,50 +74,16 @@ export class SofascoreService {
       }
     }
 
-    // GLOBAL FETCH: Iterate through all categories to get ALL matches in the world
+    // GLOBAL FETCH: Use the sport-wide scheduled-events endpoint for maximum efficiency
     console.log(`[SERVICE] Fetching GLOBAL fixtures for sport: ${sport}, date: ${date}`);
     try {
-      // 1. Get all categories for this sport
-      const categoriesResponse = await axios.get(`${SOFASCORE_API_URL}/sport/${ssSport}/categories`, {
+      const response = await axios.get(`${SOFASCORE_API_URL}/sport/${ssSport}/scheduled-events/${date}`, {
         headers: this.headers
       });
-      const categories: Category[] = categoriesResponse.data.categories || [];
-      console.log(`[SERVICE] Found ${categories.length} categories globally. Fetching events per category...`);
 
-      const allEvents: Event[] = [];
-      const chunkSize = 20; // Chunk size to avoid being blocked
-      for (let i = 0; i < categories.length; i += chunkSize) {
-        const chunk = categories.slice(i, i + chunkSize);
-        console.log(`[SERVICE] Fetching global fixtures: ${Math.min(i + chunkSize, categories.length)}/${categories.length} categories processed...`);
-        
-        const chunkPromises = chunk.map(async (category: Category) => {
-          try {
-            const response = await axios.get(`${SOFASCORE_API_URL}/category/${category.id}/scheduled-events/${date}`, {
-              headers: this.headers
-            });
-            return response.data.events || [];
-          } catch (err: any) {
-            if (err.response && err.response.status === 404) return [];
-            console.warn(`[SERVICE] Warning: Could not fetch events for category ${category.name} (${category.id}): ${err.message}`);
-            return [];
-          }
-        });
-
-        const results = await Promise.all(chunkPromises);
-        results.forEach(events => allEvents.push(...events));
-      }
-
-      // Remove potential duplicates
-      const uniqueEventsMap = new Map<number, Event>();
-      allEvents.forEach((ev: Event) => {
-        if (!uniqueEventsMap.has(ev.id)) {
-          uniqueEventsMap.set(ev.id, ev);
-        }
-      });
-
-      const uniqueEventsArr = Array.from(uniqueEventsMap.values());
-      console.log(`[SERVICE] Success: Fetched total ${uniqueEventsArr.length} events across all categories globally for ${sport}`);
-      return { events: uniqueEventsArr };
+      const allEvents: Event[] = response.data.events || [];
+      console.log(`[SERVICE] Success: Fetched total ${allEvents.length} events globally for ${sport} on ${date}`);
+      return { events: allEvents };
     } catch (error: any) {
       console.error(`[SERVICE] Error: Could not fetch global fixtures for ${sport} on ${date}. Reason: ${error.message}`);
       throw new Error(`Could not fetch global fixtures: ${error.message}`);
