@@ -16,7 +16,8 @@ import type {
   GoalDistributionResponse,
   EventGoalDistributions,
   StandingsResponse,
-  StatisticsResponse
+  StatisticsResponse,
+  FullEventData
 } from '../types/index.js';
 
 const SOFASCORE_API_URL = 'https://api.sofascore.com/api/v1';
@@ -341,6 +342,21 @@ export class SofascoreService {
       console.error(`[SERVICE] Error: Could not fetch bulk odds. Reason: ${error.message}`);
       return { odds: {} };
     }
+  }
+
+  static async getFullEventData(eventId: string): Promise<FullEventData> {
+    console.log(`[SERVICE] Fetching full event data for eventId: ${eventId}`);
+    const [event, odds, lineups, teamStreaks, goalDistributions, standings, statistics] = await Promise.all([
+      this.getEvent(eventId),
+      this.getOdds(eventId),
+      this.getLineups(eventId).catch(() => null),
+      this.getTeamStreaks(eventId).catch(() => null),
+      this.getEventGoalDistributions(eventId).catch(() => null),
+      this.getEventStandings(eventId).catch(() => null),
+      this.getStatistics(eventId).catch(() => null)
+    ]);
+    console.log(`[SERVICE] Success: Fetched full event data for eventId: ${eventId}`);
+    return { event, odds, lineups, teamStreaks, goalDistributions, standings, statistics };
   }
 }
 

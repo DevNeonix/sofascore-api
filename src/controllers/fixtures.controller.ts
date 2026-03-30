@@ -142,27 +142,8 @@ export class FixturesController {
     console.log(`[CONTROLLER] Received request for ALL match data: eventId ${eventId}`);
 
     try {
-      // Fetch General Info, All Odds, Lineups, Team Streaks and Goal Distributions in parallel
-      const [generalInfo, odds, lineups, teamStreaks, goalDistributions, standings, statistics] = await Promise.all([
-        SofascoreService.getEvent(eventId),
-        SofascoreService.getOdds(eventId),
-        SofascoreService.getLineups(eventId).catch(() => null),
-        SofascoreService.getTeamStreaks(eventId).catch(() => null),
-        SofascoreService.getEventGoalDistributions(eventId).catch(() => null),
-        SofascoreService.getEventStandings(eventId).catch(() => null),
-        SofascoreService.getStatistics(eventId).catch(() => null)
-      ]);
-
+      const response = await SofascoreService.getFullEventData(eventId);
       console.log(`[CONTROLLER] Successfully returning full data package for eventId ${eventId}`);
-      const response: FullEventData = {
-        event: generalInfo,
-        odds: odds,
-        lineups: lineups,
-        teamStreaks: teamStreaks,
-        goalDistributions: goalDistributions,
-        standings: standings,
-        statistics: statistics
-      };
       res.json(response);
     } catch (error: any) {
       console.error(`[CONTROLLER] Error fetching full event data: ${error.message}`);
