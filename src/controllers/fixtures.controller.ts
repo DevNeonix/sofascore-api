@@ -1,14 +1,18 @@
 import type { Request, Response } from 'express';
 import { SofascoreService } from '../services/sofascore.service.js';
-import type { 
-  Event, 
-  FixturesResponse, 
-  BulkOddsResponse, 
-  Lineups, 
-  Odds, 
-  LeaguesData, 
+import type {
+  Event,
+  FixturesResponse,
+  BulkOddsResponse,
+  Lineups,
+  Odds,
+  LeaguesData,
   FullEventData,
-  PartialEventDetails
+  PartialEventDetails,
+  TeamStreaks,
+  EventGoalDistributions,
+  StandingsResponse,
+  StatisticsResponse
 } from '../types/index.js';
 
 export class FixturesController {
@@ -138,18 +142,26 @@ export class FixturesController {
     console.log(`[CONTROLLER] Received request for ALL match data: eventId ${eventId}`);
 
     try {
-      // Fetch General Info, All Odds, and Lineups in parallel
-      const [generalInfo, odds, lineups] = await Promise.all([
+      // Fetch General Info, All Odds, Lineups, Team Streaks and Goal Distributions in parallel
+      const [generalInfo, odds, lineups, teamStreaks, goalDistributions, standings, statistics] = await Promise.all([
         SofascoreService.getEvent(eventId),
         SofascoreService.getOdds(eventId),
-        SofascoreService.getLineups(eventId).catch(() => null)
+        SofascoreService.getLineups(eventId).catch(() => null),
+        SofascoreService.getTeamStreaks(eventId).catch(() => null),
+        SofascoreService.getEventGoalDistributions(eventId).catch(() => null),
+        SofascoreService.getEventStandings(eventId).catch(() => null),
+        SofascoreService.getStatistics(eventId).catch(() => null)
       ]);
 
       console.log(`[CONTROLLER] Successfully returning full data package for eventId ${eventId}`);
       const response: FullEventData = {
         event: generalInfo,
         odds: odds,
-        lineups: lineups
+        lineups: lineups,
+        teamStreaks: teamStreaks,
+        goalDistributions: goalDistributions,
+        standings: standings,
+        statistics: statistics
       };
       res.json(response);
     } catch (error: any) {
@@ -166,6 +178,62 @@ export class FixturesController {
     try {
       const odds: BulkOddsResponse = await SofascoreService.getBulkOdds(sport, date);
       res.json(odds);
+    } catch (error: any) {
+      console.error(`[CONTROLLER] Error: ${error.message}`);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  static async getStatistics(req: Request, res: Response) {
+    const eventId = req.params.eventId as string;
+    console.log(`[CONTROLLER] Received request for statistics: eventId ${eventId}`);
+
+    try {
+      const data: StatisticsResponse = await SofascoreService.getStatistics(eventId);
+      console.log(`[CONTROLLER] Successfully returning statistics for eventId ${eventId}`);
+      res.json(data);
+    } catch (error: any) {
+      console.error(`[CONTROLLER] Error: ${error.message}`);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  static async getStandings(req: Request, res: Response) {
+    const eventId = req.params.eventId as string;
+    console.log(`[CONTROLLER] Received request for standings: eventId ${eventId}`);
+
+    try {
+      const data: StandingsResponse = await SofascoreService.getEventStandings(eventId);
+      console.log(`[CONTROLLER] Successfully returning standings for eventId ${eventId}`);
+      res.json(data);
+    } catch (error: any) {
+      console.error(`[CONTROLLER] Error: ${error.message}`);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  static async getGoalDistributions(req: Request, res: Response) {
+    const eventId = req.params.eventId as string;
+    console.log(`[CONTROLLER] Received request for goal distributions: eventId ${eventId}`);
+
+    try {
+      const data: EventGoalDistributions = await SofascoreService.getEventGoalDistributions(eventId);
+      console.log(`[CONTROLLER] Successfully returning goal distributions for eventId ${eventId}`);
+      res.json(data);
+    } catch (error: any) {
+      console.error(`[CONTROLLER] Error: ${error.message}`);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  static async getTeamStreaks(req: Request, res: Response) {
+    const eventId = req.params.eventId as string;
+    console.log(`[CONTROLLER] Received request for team streaks: eventId ${eventId}`);
+
+    try {
+      const streaks: TeamStreaks = await SofascoreService.getTeamStreaks(eventId);
+      console.log(`[CONTROLLER] Successfully returning team streaks for eventId ${eventId}`);
+      res.json(streaks);
     } catch (error: any) {
       console.error(`[CONTROLLER] Error: ${error.message}`);
       res.status(500).json({ error: error.message });

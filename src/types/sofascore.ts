@@ -141,6 +141,10 @@ export interface FullEventData {
   event: Event | null;
   odds: Odds;
   lineups: Lineups | null;
+  teamStreaks: TeamStreaks | null;
+  goalDistributions: EventGoalDistributions | null;
+  standings: StandingsResponse | null;
+  statistics: StatisticsResponse | null;
 }
 
 export interface PartialEventDetails {
@@ -151,4 +155,128 @@ export interface PartialEventDetails {
 export interface BulkOddsResponse {
   odds: { [eventId: string]: Market };
   [key: string]: any;
+}
+
+export interface StatisticItem {
+  key: string;
+  name: string;
+  home: string;
+  away: string;
+  homeValue: number;
+  awayValue: number;
+  homeTotal?: number;
+  awayTotal?: number;
+  compareCode: number;
+  statisticsType: 'positive' | 'negative';
+  valueType: 'event' | 'team';
+  renderType: number;
+}
+
+export interface StatisticGroup {
+  groupName: string;
+  statisticsItems: StatisticItem[];
+}
+
+export interface StatisticPeriod {
+  period: 'ALL' | '1ST' | '2ND';
+  groups: StatisticGroup[];
+}
+
+export interface StatisticsResponse {
+  statistics: StatisticPeriod[];
+}
+
+export interface StandingTeamColors {
+  primary: string;
+  secondary: string;
+  text: string;
+}
+
+export interface StandingTeam {
+  id: number;
+  name: string;
+  slug: string;
+  shortName: string;
+  nameCode: string;
+  type: number;
+  teamColors: StandingTeamColors;
+}
+
+export interface StandingPromotion {
+  id: number;
+  text: string;
+}
+
+export interface TieBreakingRule {
+  id: number;
+  text: string;
+}
+
+export interface StandingRow {
+  id: number;
+  team: StandingTeam;
+  position: number;
+  matches: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  scoresFor: number;
+  scoresAgainst: number;
+  points: number;
+  scoreDiffFormatted: string;
+  descriptions: any[];
+  promotion?: StandingPromotion;
+}
+
+export interface Standing {
+  id: number;
+  type: string;
+  name: string;
+  rows: StandingRow[];
+  descriptions: any[];
+  tieBreakingRule?: TieBreakingRule;
+  tournament: Tournament;
+  updatedAtTimestamp: number;
+}
+
+export interface StandingsResponse {
+  standings: Standing[];
+}
+
+export interface GoalDistributionPeriod {
+  id: number;
+  periodStart: number;
+  periodEnd: number;
+  scoredGoals: number;
+  concededGoals: number;
+}
+
+export interface GoalDistribution {
+  id: number;
+  type: 'home' | 'away' | 'overall';
+  periods: GoalDistributionPeriod[];
+  matches: number;
+  scoredGoals: number;
+  concededGoals: number;
+}
+
+export interface GoalDistributionResponse {
+  goalDistributions: GoalDistribution[];
+}
+
+export interface EventGoalDistributions {
+  home: GoalDistributionResponse;
+  away: GoalDistributionResponse;
+}
+
+export interface TeamStreak {
+  name: string;
+  value: string;
+  team: 'home' | 'away';
+  continued: boolean;
+}
+
+export interface TeamStreaks {
+  general: TeamStreak[];
+  head2head: TeamStreak[];
 }

@@ -41,7 +41,25 @@ app.get('/test-match/:id', async (req, res) => {
   }
 });
 
+app.get('/test-team-streaks/:id', async (req, res) => {
+  try {
+    const eventId = req.params.id;
+    console.log(`[EXAMPLE] Fetching team streaks for match ${eventId}...`);
+
+    const data = await SofascoreRepository.getTeamStreaks(eventId);
+
+    res.json({
+      success: true,
+      homeTeamStreaks: data.homeTeamStreaks,
+      awayTeamStreaks: data.awayTeamStreaks
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Example app listening at http://localhost:${port}`);
   console.log(`Try: http://localhost:${port}/test-fixtures?sport=football&date=2026-03-11`);
+  console.log(`Try: http://localhost:${port}/test-team-streaks/14083466`);
 });

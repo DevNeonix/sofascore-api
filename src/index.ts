@@ -1,11 +1,12 @@
 import { SofascoreService } from './services/sofascore.service.js';
-import type { 
-  FixturesResponse, 
-  FullEventData, 
-  Lineups, 
-  Odds, 
-  BulkOddsResponse, 
-  LeaguesData 
+import type {
+  FixturesResponse,
+  FullEventData,
+  Lineups,
+  Odds,
+  BulkOddsResponse,
+  LeaguesData,
+  TeamStreaks
 } from './types/index.js';
 
 export const SofascoreRepository = {
@@ -21,16 +22,24 @@ export const SofascoreRepository = {
    * Obtiene la información completa de un evento (Alineaciones, Odds, Info General)
    */
   async getEventFullData(sport: string, eventId: string): Promise<FullEventData> {
-    const [event, odds, lineups] = await Promise.all([
+    const [event, odds, lineups, teamStreaks, goalDistributions, standings, statistics] = await Promise.all([
       SofascoreService.getEvent(eventId),
       SofascoreService.getOdds(eventId),
-      SofascoreService.getLineups(eventId)
+      SofascoreService.getLineups(eventId),
+      SofascoreService.getTeamStreaks(eventId).catch(() => null),
+      SofascoreService.getEventGoalDistributions(eventId).catch(() => null),
+      SofascoreService.getEventStandings(eventId).catch(() => null),
+      SofascoreService.getStatistics(eventId).catch(() => null)
     ]);
 
     return {
       event,
       odds,
-      lineups
+      lineups,
+      teamStreaks,
+      goalDistributions,
+      standings,
+      statistics
     };
   },
 
@@ -60,6 +69,13 @@ export const SofascoreRepository = {
    */
   async getLeagues(country: string, sport: string): Promise<LeaguesData> {
     return SofascoreService.getLeagues(country, sport);
+  },
+
+  /**
+   * Obtiene las rachas (streaks) de los equipos local y visitante para un evento
+   */
+  async getTeamStreaks(eventId: string): Promise<TeamStreaks> {
+    return SofascoreService.getTeamStreaks(eventId);
   }
 };
 
