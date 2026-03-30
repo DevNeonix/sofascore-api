@@ -29,6 +29,64 @@ export class SofascoreService {
     'Referer': 'https://www.sofascore.com/',
   };
 
+  // Helper: Limit concurrent requests to avoid overwhelming API
+  private static async batchRequests<T>(
+    items: any[],
+    fn: (item: any) => Promise<T>,
+    batchSize: number = 10
+  ): Promise<T[]> {
+    const results: T[] = [];
+    for (let i = 0; i < items.length; i += batchSize) {
+      const batch = items.slice(i, i + batchSize);
+      const batchResults = await Promise.all(batch.map(fn));
+      results.push(...batchResults);
+    }
+    return results;
+  }
+
+  // Helper: Filter events by Lima timezone (UTC-5)
+  private static filterEventsByLimaDate(events: Event[], date: string): Event[] {
+    const startOfDay = new Date(`${date}T00:00:00-05:00`).getTime() / 1000;
+    const endOfDay = new Date(`${date}T23:59:59.999-05:00`).getTime() / 1000;
+    return events.filter(event => event.startTimestamp >= startOfDay && event.startTimestamp <= endOfDay);
+  }
+
+  // Helper: Fetch events for a list of tournaments with concurrency control
+  private static async fetchEventsForTournaments(
+    tournaments: any[],
+    date: string,
+    batchSize: number = 10
+  ): Promise<Event[]> {
+    const allEvents: Event[] = [];
+
+    const fetchTournamentEvents = async (item: any): Promise<Event[]> => {
+      const tournamentId = item.tournament?.uniqueTournament?.id;
+      if (!tournamentId) {
+        // Log the actual structure to debug
+        const keys = Object.keys(item || {});
+        const itemType = item?.tournament?.name || item?.event?.name || 'unknown';
+        console.warn(`[SERVICE] Warning: Could not extract tournament ID from item. Type: ${itemType}, Keys: ${keys.slice(0, 5).join(',')}`);
+        return [];
+      }
+
+      try {
+        const response = await axios.get(
+          `${SOFASCORE_API_URL}/unique-tournament/${tournamentId}/scheduled-events/${date}`,
+          { headers: this.headers, timeout: 10000 }
+        );
+        return response.data.events || [];
+      } catch (err: any) {
+        if (err.response?.status === 404) return [];
+        console.warn(`[SERVICE] Warning: Could not fetch events for tournament ${tournamentId}: ${err.message}`);
+        return [];
+      }
+    };
+
+    const results = await this.batchRequests(tournaments, fetchTournamentEvents, batchSize);
+    results.forEach(events => allEvents.push(...events));
+    return allEvents;
+  }
+
   private static transformOddsMarkets(markets: any[]): Market[] {
     if (!markets) return [];
     return markets.map(market => ({
@@ -80,14 +138,43 @@ export class SofascoreService {
       }
     }
 
-    // GLOBAL FETCH: Use the sport-wide scheduled-events endpoint for maximum efficiency
-    console.log(`[SERVICE] Fetching GLOBAL fixtures for sport: ${sport}, date: ${date}`);
+    // GLOBAL FETCH: Pagination through scheduled-tournaments with optimized concurrency
+    console.log(`[SERVICE] Fetching GLOBAL fixtures for sport: ${sport}, date: ${date} with pagination and concurrency control`);
     try {
-      const response = await axios.get(`${SOFASCORE_API_URL}/sport/${ssSport}/scheduled-events/${date}`, {
-        headers: this.headers
-      });
+      const allEvents: Event[] = [];
+      let page = 1;
+      let hasNextPage = true;
 
-      const allEvents: Event[] = response.data.events || [];
+      while (hasNextPage) {
+        try {
+          // 1. Fetch current page of tournaments
+          const response = await axios.get(
+            `${SOFASCORE_API_URL}/sport/${ssSport}/scheduled-tournaments/${date}/page/${page}`,
+            { headers: this.headers }
+          );
+
+          const scheduled = response.data.scheduled || [];
+          hasNextPage = response.data.hasNextPage || false;
+
+          console.log(`[SERVICE] Page ${page}: Found ${scheduled.length} scheduled items. hasNextPage: ${hasNextPage}`);
+
+          // 2. Stop if no tournaments on this page
+          if (scheduled.length === 0) {
+            console.log(`[SERVICE] No more tournaments found. Stopping pagination.`);
+            break;
+          }
+
+          // 3. Fetch events for all tournaments on this page with concurrency control (batch size 10)
+          const pageEvents = await this.fetchEventsForTournaments(scheduled, date, 10);
+          allEvents.push(...pageEvents);
+
+          page++;
+        } catch (error: any) {
+          console.error(`[SERVICE] Error processing page ${page}: ${error.message}`);
+          hasNextPage = false;
+        }
+      }
+
       console.log(`[SERVICE] Success: Fetched total ${allEvents.length} events globally for ${sport} on ${date}`);
       return { events: allEvents };
     } catch (error: any) {
