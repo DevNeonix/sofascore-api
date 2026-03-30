@@ -347,8 +347,8 @@ export class SofascoreService {
   static async getFullEventData(eventId: string): Promise<FullEventData> {
     console.log(`[SERVICE] Fetching full event data for eventId: ${eventId}`);
     const [event, odds, lineups, teamStreaks, goalDistributions, standings, statistics] = await Promise.all([
-      this.getEvent(eventId),
-      this.getOdds(eventId),
+      this.getEvent(eventId).catch(() => null),
+      this.getOdds(eventId).catch(() => null),
       this.getLineups(eventId).catch(() => null),
       this.getTeamStreaks(eventId).catch(() => null),
       this.getEventGoalDistributions(eventId).catch(() => null),
