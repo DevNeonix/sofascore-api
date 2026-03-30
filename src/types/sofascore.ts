@@ -139,7 +139,7 @@ export interface FixturesResponse {
 
 export interface FullEventData {
   event: Event | null;
-  odds: Odds;
+  odds: Odds | null;
   lineups: Lineups | null;
   teamStreaks: TeamStreaks | null;
   goalDistributions: EventGoalDistributions | null;
