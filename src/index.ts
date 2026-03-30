@@ -23,9 +23,9 @@ export const SofascoreRepository = {
    */
   async getEventFullData(sport: string, eventId: string): Promise<FullEventData> {
     const [event, odds, lineups, teamStreaks, goalDistributions, standings, statistics] = await Promise.all([
-      SofascoreService.getEvent(eventId),
-      SofascoreService.getOdds(eventId),
-      SofascoreService.getLineups(eventId),
+      SofascoreService.getEvent(eventId).catch(() => null),
+      SofascoreService.getOdds(eventId).catch(() => null),
+      SofascoreService.getLineups(eventId).catch(() => null),
       SofascoreService.getTeamStreaks(eventId).catch(() => null),
       SofascoreService.getEventGoalDistributions(eventId).catch(() => null),
       SofascoreService.getEventStandings(eventId).catch(() => null),
