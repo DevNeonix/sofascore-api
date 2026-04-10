@@ -31,57 +31,17 @@ export class FixturesController {
     }
 
     try {
-      // Calculate next day to cover the full day in Lima timezone (UTC-5)
-      // Since Lima is behind UTC, matches late in the day in Lima may fall on the next day in UTC
-      const dateParts = dateStr.split('-').map(Number);
-      if (dateParts.length !== 3 || dateParts.some(isNaN)) {
-        return res.status(400).json({ error: 'Invalid date format' });
-      }
-      const [y, m, d] = dateParts as [number, number, number];
-      const currentDateUTC = new Date(Date.UTC(y, m - 1, d));
-      const nextDateUTC = new Date(currentDateUTC.getTime() + 24 * 60 * 60 * 1000);
-      const nextDateStr = nextDateUTC.toISOString().split('T')[0] as string;
-
-      console.log(`[CONTROLLER] Fetching data for ${dateStr} and ${nextDateStr} to cover timezone offset...`);
-
-      // Fetch fixtures and bulk odds for both days in parallel
-      const [fixturesData, nextFixturesData, oddsData, nextOddsData]: [FixturesResponse, FixturesResponse, BulkOddsResponse, BulkOddsResponse] = await Promise.all([
+      const [fixturesData, oddsData]: [FixturesResponse, BulkOddsResponse] = await Promise.all([
         SofascoreService.getFixtures(sport, dateStr, country),
-        SofascoreService.getFixtures(sport, nextDateStr, country),
-        SofascoreService.getBulkOdds(sport, dateStr),
-        SofascoreService.getBulkOdds(sport, nextDateStr)
+        SofascoreService.getBulkOdds(sport, dateStr)
       ]);
 
-      const allEvents: Event[] = [
-        ...(fixturesData.events || []),
-        ...(nextFixturesData.events || [])
-      ];
-      
-      // Filter events to only include those happening on the specified date in the America/Lima timezone
-      const startOfDay = new Date(`${dateStr}T00:00:00-05:00`).getTime() / 1000;
-      const endOfDay = new Date(`${dateStr}T23:59:59.999-05:00`).getTime() / 1000;
-
-      const filteredEvents = allEvents.filter((event: Event) => {
-        return event.startTimestamp >= startOfDay && event.startTimestamp <= endOfDay;
-      });
-
-      // Remove duplicates that might occur if an event is returned in both dates (unlikely but safe)
-      const uniqueEventsMap = new Map<number, Event>();
-      filteredEvents.forEach(ev => uniqueEventsMap.set(ev.id, ev));
-      const uniqueEvents = Array.from(uniqueEventsMap.values());
-
-      const allOdds = {
-        ...(oddsData.odds || {}),
-        ...(nextOddsData.odds || {})
-      };
-
-      // Enrich events with their corresponding odds
-      const enrichedEvents = uniqueEvents.map((event: Event) => ({
+      const enrichedEvents = (fixturesData.events || []).map((event: Event) => ({
         ...event,
-        odds: allOdds[event.id] || null
+        odds: (oddsData.odds || {})[event.id] || null
       }));
 
-      console.log(`[CONTROLLER] Successfully returning ${enrichedEvents.length} enriched fixtures for ${sport} - ${dateStr} (filtered from ${allEvents.length} total fetched)`);
+      console.log(`[CONTROLLER] Successfully returning ${enrichedEvents.length} enriched fixtures for ${sport} - ${dateStr}`);
       res.json({ events: enrichedEvents });
     } catch (error: any) {
       console.error(`[CONTROLLER] Error: ${error.message}`);

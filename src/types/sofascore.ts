@@ -142,9 +142,21 @@ export interface FullEventData {
   odds: Odds | null;
   lineups: Lineups | null;
   teamStreaks: TeamStreaks | null;
+  h2hHistory: H2HHistoryResponse | null;
   goalDistributions: EventGoalDistributions | null;
   standings: StandingsResponse | null;
   statistics: StatisticsResponse | null;
+}
+
+export interface TeamHistory {
+  last: Event[];
+  next: Event[];
+}
+
+export interface H2HHistoryResponse {
+  home: TeamHistory;
+  away: TeamHistory;
+  between: Event[];
 }
 
 export interface PartialEventDetails {

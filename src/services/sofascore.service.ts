@@ -13,6 +13,7 @@ import type {
   SofascorePlayerResponse,
   Player,
   TeamStreaks,
+  H2HHistoryResponse,
   GoalDistributionResponse,
   EventGoalDistributions,
   StandingsResponse,
@@ -21,6 +22,7 @@ import type {
 } from '../types/index.js';
 
 const SOFASCORE_API_URL = 'https://api.sofascore.com/api/v1';
+const SOFASCORE_WEB_API_URL = 'https://www.sofascore.com/api/v1';
 
 export class SofascoreService {
   private static headers = {
@@ -29,67 +31,42 @@ export class SofascoreService {
     'Referer': 'https://www.sofascore.com/',
   };
 
-  // Helper: Limit concurrent requests to avoid overwhelming API
-  private static async batchRequests<T>(
-    items: any[],
-    fn: (item: any) => Promise<T>,
-    batchSize: number = 10
-  ): Promise<T[]> {
-    const results: T[] = [];
-    for (let i = 0; i < items.length; i += batchSize) {
-      const batch = items.slice(i, i + batchSize);
-      const batchResults = await Promise.all(batch.map(fn));
-      results.push(...batchResults);
-    }
-    return results;
-  }
-
-  // Helper: Filter events by Lima timezone (UTC-5)
-  private static filterEventsByLimaDate(events: Event[], date: string): Event[] {
-    const startOfDay = new Date(`${date}T00:00:00-05:00`).getTime() / 1000;
-    const endOfDay = new Date(`${date}T23:59:59.999-05:00`).getTime() / 1000;
-    return events.filter(event => event.startTimestamp >= startOfDay && event.startTimestamp <= endOfDay);
-  }
-
-  // Helper: Fetch events for a list of tournaments with concurrency control
+  // Fetch events for a deduplicated list of tournament IDs in parallel batches
   private static async fetchEventsForTournaments(
-    tournaments: any[],
+    tournamentIds: number[],
     date: string,
-    batchSize: number = 10
+    batchSize: number = 30
   ): Promise<Event[]> {
     const allEvents: Event[] = [];
 
-    const fetchTournamentEvents = async (item: any): Promise<Event[]> => {
-      const tournamentId = item.tournament?.uniqueTournament?.id;
-      if (!tournamentId) {
-        // Log the actual structure to debug
-        const keys = Object.keys(item || {});
-        const itemType = item?.tournament?.name || item?.event?.name || 'unknown';
-        console.warn(`[SERVICE] Warning: Could not extract tournament ID from item. Type: ${itemType}, Keys: ${keys.slice(0, 5).join(',')}`);
-        return [];
-      }
-
+    const fetchFn = async (id: number): Promise<Event[]> => {
       try {
         const response = await axios.get(
-          `${SOFASCORE_API_URL}/unique-tournament/${tournamentId}/scheduled-events/${date}`,
+          `${SOFASCORE_API_URL}/unique-tournament/${id}/scheduled-events/${date}`,
           { headers: this.headers, timeout: 10000 }
         );
         return response.data.events || [];
       } catch (err: any) {
         if (err.response?.status === 404) return [];
-        console.warn(`[SERVICE] Warning: Could not fetch events for tournament ${tournamentId}: ${err.message}`);
+        console.warn(`[SERVICE] Warning: Could not fetch events for tournament ${id}: ${err.message}`);
         return [];
       }
     };
 
-    const results = await this.batchRequests(tournaments, fetchTournamentEvents, batchSize);
-    results.forEach(events => allEvents.push(...events));
+    for (let i = 0; i < tournamentIds.length; i += batchSize) {
+      const batch = tournamentIds.slice(i, i + batchSize);
+      const batchResults = await Promise.all(batch.map(fetchFn));
+      batchResults.forEach(events => allEvents.push(...events));
+    }
+
     return allEvents;
   }
 
   private static transformOddsMarkets(markets: any[]): Market[] {
     if (!markets) return [];
-    return markets.map(market => ({
+    return markets
+      .filter((market: any) => market?.isLive === false)
+      .map(market => ({
       ...market,
       choices: (market.choices || []).map((choice: any) => ({
         ...choice,
@@ -106,80 +83,84 @@ export class SofascoreService {
     };
     const ssSport = sportMap[sport.toLowerCase()] || sport.toLowerCase();
 
-    if (country && country.toUpperCase() !== 'ALL') {
-      console.log(`[SERVICE] Fetching country-specific fixtures for sport: ${sport}, date: ${date}, country config: ${country}`);
-      try {
-        // 1. Get unique tournaments for the country
-        const leaguesData: LeaguesData = await this.getLeagues(country, ssSport);
-        const uniqueTournaments = leaguesData.uniqueTournaments || [];
+    console.log(`[SERVICE] Fetching fixtures for sport: ${sport}, date: ${date}${country ? ` (country: ${country})` : ''}`);
 
-        console.log(`[SERVICE] Found ${uniqueTournaments.length} unique tournaments in ${country}. Fetching events...`);
-
-        const promises = uniqueTournaments.map(async (tournament: UniqueTournament) => {
-          try {
-            const response = await axios.get(`${SOFASCORE_API_URL}/unique-tournament/${tournament.id}/scheduled-events/${date}`, {
-              headers: this.headers
-            });
-            return response.data.events || [];
-          } catch (err: any) {
-            if (err.response && err.response.status === 404) return [];
-            console.warn(`[SERVICE] Warning: Could not fetch events for tournament ${tournament.id}: ${err.message}`);
-            return [];
-          }
-        });
-
-        const resultsArray = await Promise.all(promises);
-        const allEvents: Event[] = [];
-        resultsArray.forEach(events => allEvents.push(...events));
-        return { events: allEvents };
-      } catch (error: any) {
-        console.error(`[SERVICE] Error: Could not fetch country-specific fixtures: ${error.message}`);
-        throw new Error(`Could not fetch fixtures: ${error.message}`);
-      }
-    }
-
-    // GLOBAL FETCH: Pagination through scheduled-tournaments with optimized concurrency
-    console.log(`[SERVICE] Fetching GLOBAL fixtures for sport: ${sport}, date: ${date} with pagination and concurrency control`);
     try {
-      const allEvents: Event[] = [];
-      let page = 1;
-      let hasNextPage = true;
+      // ── Phase 1: Page through scheduled-tournaments in batches of 5 ──
+      // Only the LAST page of each batch determines whether to continue.
+      const PAGE_BATCH = 5;
+      const allScheduled: any[] = [];
+      let nextPage = 1;
+      let keepGoing = true;
 
-      while (hasNextPage) {
-        try {
-          // 1. Fetch current page of tournaments
-          const response = await axios.get(
-            `${SOFASCORE_API_URL}/sport/${ssSport}/scheduled-tournaments/${date}/page/${page}`,
-            { headers: this.headers }
-          );
+      while (keepGoing) {
+        const pageNums = Array.from({ length: PAGE_BATCH }, (_, i) => nextPage + i);
+        const pageResults = await Promise.allSettled(
+          pageNums.map(p =>
+            axios.get(
+              `${SOFASCORE_API_URL}/sport/${ssSport}/scheduled-tournaments/${date}/page/${p}`,
+              { headers: this.headers, timeout: 15000 }
+            )
+          )
+        );
 
-          const scheduled = response.data.scheduled || [];
-          hasNextPage = response.data.hasNextPage || false;
-
-          console.log(`[SERVICE] Page ${page}: Found ${scheduled.length} scheduled items. hasNextPage: ${hasNextPage}`);
-
-          // 2. Stop if no tournaments on this page
-          if (scheduled.length === 0) {
-            console.log(`[SERVICE] No more tournaments found. Stopping pagination.`);
-            break;
+        // Collect scheduled items from all successful responses
+        for (const result of pageResults) {
+          if (result.status === 'fulfilled') {
+            const items: any[] = result.value.data.scheduled || [];
+            allScheduled.push(...items);
           }
-
-          // 3. Fetch events for all tournaments on this page with concurrency control (batch size 10)
-          const pageEvents = await this.fetchEventsForTournaments(scheduled, date, 10);
-          allEvents.push(...pageEvents);
-
-          page++;
-        } catch (error: any) {
-          console.error(`[SERVICE] Error processing page ${page}: ${error.message}`);
-          hasNextPage = false;
         }
+
+        // Continuation is determined only by the LAST page of the batch
+        const lastResult = pageResults[pageResults.length - 1];
+        if (!lastResult || lastResult.status === 'rejected') {
+          // 404 or network error on last page — stop
+          keepGoing = false;
+        } else {
+          const lastData = (lastResult as PromiseFulfilledResult<any>).value.data;
+          keepGoing = !!(lastData.hasNextPage) && (lastData.scheduled || []).length > 0;
+        }
+
+        nextPage += PAGE_BATCH;
       }
 
-      console.log(`[SERVICE] Success: Fetched total ${allEvents.length} events globally for ${sport} on ${date}`);
-      return { events: allEvents };
+      console.log(`[SERVICE] Collected ${allScheduled.length} scheduled tournament entries — extracting unique IDs`);
+
+      // ── Phase 2: Extract unique tournament IDs ──
+      const tournamentIds = new Set<number>();
+      allScheduled.forEach(item => {
+        const id = item.tournament?.uniqueTournament?.id;
+        if (id) tournamentIds.add(id);
+      });
+
+      console.log(`[SERVICE] Fetching events for ${tournamentIds.size} unique tournaments in parallel`);
+
+      // ── Phase 3: Fetch events per tournament in parallel batches ──
+      const allEvents = await this.fetchEventsForTournaments([...tournamentIds], date);
+
+      // Deduplicate events
+      const uniqueMap = new Map<number, Event>();
+      allEvents.forEach(ev => uniqueMap.set(ev.id, ev));
+      let events = Array.from(uniqueMap.values());
+
+      console.log(`[SERVICE] Fetched ${events.length} unique events for ${sport} on ${date}`);
+
+      // Country filter: resolve allowed tournament IDs and filter in-memory
+      if (country && country.toUpperCase() !== 'ALL') {
+        const leaguesData: LeaguesData = await this.getLeagues(country, ssSport);
+        const allowedIds = new Set((leaguesData.uniqueTournaments || []).map((t: UniqueTournament) => t.id));
+        events = events.filter((e: Event) => {
+          const tid = e.tournament?.uniqueTournament?.id ?? e.tournament?.id;
+          return allowedIds.has(tid);
+        });
+        console.log(`[SERVICE] Filtered to ${events.length} events for country: ${country}`);
+      }
+
+      return { events };
     } catch (error: any) {
-      console.error(`[SERVICE] Error: Could not fetch global fixtures for ${sport} on ${date}. Reason: ${error.message}`);
-      throw new Error(`Could not fetch global fixtures: ${error.message}`);
+      console.error(`[SERVICE] Error fetching fixtures for ${sport} on ${date}. Reason: ${error.message}`);
+      throw new Error(`Could not fetch fixtures: ${error.message}`);
     }
   }
 
@@ -392,6 +373,80 @@ export class SofascoreService {
     }
   }
 
+  static async getTeamLastEvents(teamId: number, limit: number = 10): Promise<Event[]> {
+    console.log(`[SERVICE] Fetching last events for teamId: ${teamId}`);
+    try {
+      const response = await axios.get(`${SOFASCORE_WEB_API_URL}/team/${teamId}/events/last/0`, {
+        headers: this.headers
+      });
+
+      const events = (response.data?.events || []) as Event[];
+      return events.slice(0, Math.max(1, limit));
+    } catch (error: any) {
+      console.warn(`[SERVICE] Warning: Could not fetch team history for team ${teamId}. Reason: ${error.message}`);
+      return [];
+    }
+  }
+
+  static async getTeamNextEvents(teamId: number, limit: number = 10): Promise<Event[]> {
+    console.log(`[SERVICE] Fetching next events for teamId: ${teamId}`);
+    try {
+      const response = await axios.get(`${SOFASCORE_WEB_API_URL}/team/${teamId}/events/next/0`, {
+        headers: this.headers
+      });
+
+      const events = (response.data?.events || []) as Event[];
+      return events.slice(0, Math.max(1, limit));
+    } catch (error: any) {
+      console.warn(`[SERVICE] Warning: Could not fetch upcoming events for team ${teamId}. Reason: ${error.message}`);
+      return [];
+    }
+  }
+
+  static async getEventH2HEvents(eventIdOrCustomId: string): Promise<Event[]> {
+    console.log(`[SERVICE] Fetching between-teams H2H events for eventId/customId: ${eventIdOrCustomId}`);
+    try {
+      const response = await axios.get(`${SOFASCORE_WEB_API_URL}/event/${eventIdOrCustomId}/h2h/events`, {
+        headers: this.headers
+      });
+      return (response.data?.events || []) as Event[];
+    } catch (error: any) {
+      console.warn(`[SERVICE] Warning: Could not fetch H2H events for ${eventIdOrCustomId}. Reason: ${error.message}`);
+      return [];
+    }
+  }
+
+  static async getEventH2HHistory(eventId: string, limitPerTeam: number = 10): Promise<H2HHistoryResponse> {
+    console.log(`[SERVICE] Fetching H2H history package for eventId: ${eventId}`);
+
+    const event = await this.getEvent(eventId);
+    const homeTeamId = event?.homeTeam?.id;
+    const awayTeamId = event?.awayTeam?.id;
+    const h2hKey = event?.customId || eventId;
+
+    if (!homeTeamId || !awayTeamId) {
+      return {
+        home: { last: [], next: [] },
+        away: { last: [], next: [] },
+        between: []
+      };
+    }
+
+    const [homeLast, homeNext, awayLast, awayNext, between] = await Promise.all([
+      this.getTeamLastEvents(homeTeamId, limitPerTeam),
+      this.getTeamNextEvents(homeTeamId, limitPerTeam),
+      this.getTeamLastEvents(awayTeamId, limitPerTeam),
+      this.getTeamNextEvents(awayTeamId, limitPerTeam),
+      this.getEventH2HEvents(String(h2hKey))
+    ]);
+
+    return {
+      home: { last: homeLast, next: homeNext },
+      away: { last: awayLast, next: awayNext },
+      between
+    };
+  }
+
   static async getBulkOdds(sport: string, date: string): Promise<BulkOddsResponse> {
     console.log(`[SERVICE] Fetching bulk odds for sport: ${sport}, date: ${date}`);
     try {
@@ -413,6 +468,10 @@ export class SofascoreService {
       for (const eventId in allOdds) {
         const market = allOdds[eventId];
         if (market && typeof market === 'object') {
+          if (market.isLive !== false) {
+            continue;
+          }
+
           transformedBulkOdds[eventId] = {
             ...market,
             choices: (market.choices || []).map((choice: any) => ({
@@ -433,17 +492,18 @@ export class SofascoreService {
 
   static async getFullEventData(eventId: string): Promise<FullEventData> {
     console.log(`[SERVICE] Fetching full event data for eventId: ${eventId}`);
-    const [event, odds, lineups, teamStreaks, goalDistributions, standings, statistics] = await Promise.all([
+    const [event, odds, lineups, teamStreaks, h2hHistory, goalDistributions, standings, statistics] = await Promise.all([
       this.getEvent(eventId).catch(() => null),
       this.getOdds(eventId).catch(() => null),
       this.getLineups(eventId).catch(() => null),
       this.getTeamStreaks(eventId).catch(() => null),
+      this.getEventH2HHistory(eventId).catch(() => null),
       this.getEventGoalDistributions(eventId).catch(() => null),
       this.getEventStandings(eventId).catch(() => null),
       this.getStatistics(eventId).catch(() => null)
     ]);
     console.log(`[SERVICE] Success: Fetched full event data for eventId: ${eventId}`);
-    return { event, odds, lineups, teamStreaks, goalDistributions, standings, statistics };
+    return { event, odds, lineups, teamStreaks, h2hHistory, goalDistributions, standings, statistics };
   }
 }
 

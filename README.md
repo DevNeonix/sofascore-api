@@ -80,12 +80,13 @@ GET /api/football/fixtures/2026-03-29?country=PE
 
 #### `GET /api/:sport/:eventId/full-data`
 
-Returns **everything** about a match in a single request. Makes 7 parallel calls internally:
+Returns **everything** about a match in a single request. Makes 8 parallel calls internally:
 
 - Event info
 - Odds
 - Lineups
 - Team streaks
+- H2H history package (local, visita, entre ambos)
 - Goal distributions
 - Standings
 - Statistics
@@ -100,6 +101,11 @@ GET /api/football/15655701/full-data
   "odds": { "markets": [ ... ] },
   "lineups": { "home": { ... }, "away": { ... }, "confirmed": true },
   "teamStreaks": { "general": [ ... ], "head2head": [ ... ] },
+  "h2hHistory": {
+    "home": { "last": [ ... ], "next": [ ... ] },
+    "away": { "last": [ ... ], "next": [ ... ] },
+    "between": [ ... ]
+  },
   "goalDistributions": { "home": { ... }, "away": { ... } },
   "standings": { "standings": [ ... ] },
   "statistics": { "statistics": [ ... ] }

@@ -22,11 +22,12 @@ export const SofascoreRepository = {
    * Obtiene la información completa de un evento (Alineaciones, Odds, Info General)
    */
   async getEventFullData(sport: string, eventId: string): Promise<FullEventData> {
-    const [event, odds, lineups, teamStreaks, goalDistributions, standings, statistics] = await Promise.all([
+    const [event, odds, lineups, teamStreaks, h2hHistory, goalDistributions, standings, statistics] = await Promise.all([
       SofascoreService.getEvent(eventId).catch(() => null),
       SofascoreService.getOdds(eventId).catch(() => null),
       SofascoreService.getLineups(eventId).catch(() => null),
       SofascoreService.getTeamStreaks(eventId).catch(() => null),
+      SofascoreService.getEventH2HHistory(eventId).catch(() => null),
       SofascoreService.getEventGoalDistributions(eventId).catch(() => null),
       SofascoreService.getEventStandings(eventId).catch(() => null),
       SofascoreService.getStatistics(eventId).catch(() => null)
@@ -37,6 +38,7 @@ export const SofascoreRepository = {
       odds,
       lineups,
       teamStreaks,
+      h2hHistory,
       goalDistributions,
       standings,
       statistics

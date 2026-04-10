@@ -259,6 +259,67 @@
             </div>`;
         }
 
+        function renderEventMiniCard(event, perspectiveTeamId) {
+            const home = event?.homeTeam?.name || 'Home';
+            const away = event?.awayTeam?.name || 'Away';
+            const hs = event?.homeScore?.current;
+            const as = event?.awayScore?.current;
+            const score = (hs !== undefined && as !== undefined) ? `${hs} - ${as}` : 'vs';
+            const date = event?.startTimestamp
+                ? new Date(event.startTimestamp * 1000).toLocaleDateString()
+                : '-';
+
+            const isPerspectiveHome = event?.homeTeam?.id === perspectiveTeamId;
+            const sideBadge = perspectiveTeamId
+                ? (isPerspectiveHome ? 'HOME' : 'AWAY')
+                : '';
+
+            return `<div style="border:1px solid #eee;border-radius:6px;padding:8px;margin-bottom:6px;background:#fff;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                    <div style="font-size:12px;color:#333;line-height:1.3;">${home} <strong>${score}</strong> ${away}</div>
+                    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
+                        <span style="font-size:10px;color:#888;">${date}</span>
+                        ${sideBadge ? `<span style="font-size:9px;background:#eef7fb;color:#004666;border:1px solid #d1e9f5;border-radius:3px;padding:1px 4px;">${sideBadge}</span>` : ''}
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        function renderHistoryBlock(title, events, perspectiveTeamId) {
+            const list = (events || []).slice(0, 8);
+            return `<div>
+                <div style="font-size:12px;font-weight:bold;color:#004666;margin-bottom:6px;">${title}</div>
+                ${list.length
+                    ? list.map(e => renderEventMiniCard(e, perspectiveTeamId)).join('')
+                    : '<div class="no-data" style="padding:10px;">No data</div>'}
+            </div>`;
+        }
+
+        function renderH2HHistory(h2hData, homeTeam, awayTeam) {
+            if (!h2hData) return '';
+
+            let html = '<div style="margin-bottom:20px;border-bottom:2px solid #eee;padding-bottom:15px;">';
+            html += '<div class="section-title" style="text-align:center;">H2H History</div>';
+
+            html += '<div style="margin-top:10px;">';
+            html += renderHistoryBlock(`Between ${homeTeam?.name || 'Home'} vs ${awayTeam?.name || 'Away'}`, h2hData.between, null);
+            html += '</div>';
+
+            html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:12px;">';
+            html += `<div>
+                ${renderHistoryBlock(`${homeTeam?.name || 'Home'} - Last`, h2hData.home?.last, homeTeam?.id)}
+                <div style="margin-top:8px;">${renderHistoryBlock(`${homeTeam?.name || 'Home'} - Next`, h2hData.home?.next, homeTeam?.id)}</div>
+            </div>`;
+            html += `<div>
+                ${renderHistoryBlock(`${awayTeam?.name || 'Away'} - Last`, h2hData.away?.last, awayTeam?.id)}
+                <div style="margin-top:8px;">${renderHistoryBlock(`${awayTeam?.name || 'Away'} - Next`, h2hData.away?.next, awayTeam?.id)}</div>
+            </div>`;
+            html += '</div>';
+            html += '</div>';
+
+            return html;
+        }
+
         function renderStatistics(statisticsData, homeTeamName, awayTeamName) {
             if (!statisticsData?.statistics?.length) return '';
 
@@ -452,6 +513,7 @@
             const lineupsData = data.lineups || {};
             const oddsData = data.odds || {};
             const streaksData = data.teamStreaks || null;
+            const h2hData = data.h2hHistory || null;
             const goalDistData = data.goalDistributions || null;
             const standingsData = data.standings || null;
             const statisticsData = data.statistics || null;
@@ -487,6 +549,8 @@
                 }
                 html += '</div>';
             }
+
+            html += renderH2HHistory(h2hData, ev.homeTeam, ev.awayTeam);
 
             html += renderGoalDistributions(goalDistData, ev.homeTeam?.name, ev.awayTeam?.name);
 
